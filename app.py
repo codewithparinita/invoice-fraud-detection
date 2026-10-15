@@ -301,11 +301,18 @@ def analyze_invoices(raw, client=None):
 # 5. SAVE INVESTIGATION HISTORY
 # =====================================================
 
+
 def save_investigations(client, results):
     if client is None:
         raise RuntimeError("Supabase is not connected.")
 
-    flagged = results[results["risk_score"] > 0]
+    # Include risky invoices and any bank-account mismatches.
+    flagged_mask = results["risk_score"].fillna(0) > 0
+
+    if "bank_mismatch" in results.columns:
+        flagged_mask = flagged_mask | results["bank_mismatch"].fillna(False)
+
+    flagged = results[flagged_mask]
 
     if flagged.empty:
         return 0
@@ -313,18 +320,36 @@ def save_investigations(client, results):
     rows = []
 
     for _, row in flagged.iterrows():
+        reasons = str(row.get("risk_reasons", "") or "")
+
+        # Add the bank-account mismatch to the investigation reason.
+        if (
+            row.get("bank_mismatch", False) is True
+            or str(row.get("bank_account_check", ""))
+            == "BANK ACCOUNT MISMATCH"
+        ):
+            mismatch_reason = (
+                "BANK ACCOUNT MISMATCH: Invoice bank account "
+                "differs from the vendor's verified bank account."
+            )
+
+            if mismatch_reason not in reasons:
+                reasons = f"{reasons}; {mismatch_reason}".strip("; ")
+
+        if not reasons.strip():
+            reasons = "Flagged for risk investigation."
+
         rows.append({
             "invoice_id": str(row["invoice_id"]),
             "vendor_id": str(row["vendor_id"]),
-            "detected_issue": str(row["risk_reasons"])[:1000],
+            "detected_issue": reasons[:1000],
             "risk_score": float(row["risk_score"])
         })
 
-    client.table("investigation_history").insert(
-        rows
-    ).execute()
+    client.table("investigation_history").insert(rows).execute()
 
     return len(rows)
+
 
 
 # =====================================================
