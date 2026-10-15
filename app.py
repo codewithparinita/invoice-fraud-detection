@@ -528,6 +528,7 @@ with st.sidebar:
             "Investigation Reports",
             "Fraud Alerts",
             "Vendor Risk Intelligence",
+            "Bank Account Audit",
             "Methodology"
         ]
     )
@@ -1289,6 +1290,87 @@ elif page == "Vendor Risk Intelligence":
 
     except Exception as e:
         st.error("Unable to generate vendor risk intelligence.")
+        st.exception(e)
+
+elif page == "Bank Account Audit":
+    st.title("🏦 Vendor Bank-Account Audit Trail")
+
+    st.write(
+        "Review changes to vendors' verified bank accounts."
+    )
+
+    try:
+        if db is None:
+            st.error(
+                "Database connection unavailable. "
+                "Check your Supabase connection and secrets."
+            )
+
+        else:
+            response = (
+                db.table("vendor_bank_account_audit")
+                .select("*")
+                .order("changed_at", desc=True)
+                .execute()
+            )
+
+            audit_df = pd.DataFrame(response.data or [])
+
+            if audit_df.empty:
+                st.info(
+                    "No bank-account changes recorded yet. "
+                    "Update a vendor's verified bank account to test "
+                    "the audit trail."
+                )
+
+            else:
+                audit_df["changed_at"] = pd.to_datetime(
+                    audit_df["changed_at"],
+                    errors="coerce",
+                    utc=True
+                )
+
+                col1, col2 = st.columns(2)
+
+                col1.metric(
+                    "Recorded Account Changes",
+                    len(audit_df)
+                )
+
+                col2.metric(
+                    "Vendors Affected",
+                    audit_df["vendor_id"].nunique()
+                )
+
+                st.subheader("Account Change History")
+
+                display_columns = [
+                    "id",
+                    "vendor_id",
+                    "old_bank_account",
+                    "new_bank_account",
+                    "changed_at",
+                    "changed_by"
+                ]
+
+                st.dataframe(
+                    audit_df[display_columns],
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+                st.download_button(
+                    label="Download Bank-Account Audit (CSV)",
+                    data=audit_df.to_csv(
+                        index=False
+                    ).encode("utf-8-sig"),
+                    file_name="vendor_bank_account_audit.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+
+    except Exception as e:
+        st.error("Unable to load the bank-account audit trail.")
         st.exception(e)
 
 # =====================================================
