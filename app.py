@@ -1379,6 +1379,15 @@ elif page == "Vendor Risk Intelligence":
             summary["vendor_risk_rating"] = (
                 summary["maximum_recorded_score"].apply(vendor_rating)
             )
+            
+            # Normalize the recorded score to a 0–100 range.
+            summary["vendor_risk_score"] = (
+                summary["maximum_recorded_score"]
+                .fillna(0)
+                .clip(lower=0, upper=100)
+                .round(2)
+            )
+
 
             summary = summary.sort_values(
                 "maximum_recorded_score",
