@@ -1329,6 +1329,18 @@ elif page == "Vendor Risk Intelligence":
                 "repeated_invoice_record"
             ] = repeated_ids.to_numpy()
 
+            # Identify investigations mentioning a bank-account mismatch.
+            vendor_df["bank_mismatch_record"] = (
+                vendor_df["detected_issue"]
+                .fillna("")
+                .astype(str)
+                .str.contains(
+                    "BANK ACCOUNT MISMATCH",
+                    case=False,
+                    regex=False
+                )
+            )
+
             # Aggregate investigation data by vendor.
             summary = (
                 vendor_df.groupby(
@@ -1344,6 +1356,9 @@ elif page == "Vendor Risk Intelligence":
                     high_risk_records=(
                         "risk_score",
                         lambda scores: (scores >= 50).sum()
+                    ),
+                    bank_mismatch_records=(
+                        "bank_mismatch_record", "sum"
                     ),
                     average_recorded_score=("risk_score", "mean"),
                     maximum_recorded_score=("risk_score", "max")
