@@ -956,6 +956,7 @@ elif page == "Vendor Master":
             st.error(f"Could not load vendors: {exc}")
 
 
+
 # =====================================================
 # 11. INVESTIGATION HISTORY
 # =====================================================
@@ -983,35 +984,68 @@ elif page == "Investigation History":
             if history:
                 history_df = pd.DataFrame(history)
 
+                vendor_options = sorted(
+                    history_df["vendor_id"]
+                    .fillna("")
+                    .astype(str)
+                    .unique()
+                    .tolist()
+                )
+
+                selected_vendor = st.selectbox(
+                    "Filter by Vendor",
+                    ["All Vendors"] + vendor_options
+                )
+
+                filtered_history = history_df.copy()
+
+                if selected_vendor != "All Vendors":
+                    filtered_history = filtered_history[
+                        filtered_history["vendor_id"].astype(str)
+                        == selected_vendor
+                    ]
+
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Saved Entries", len(history_df))
+
+                c1.metric(
+                    "Investigation Records",
+                    len(filtered_history)
+                )
                 c2.metric(
-                    "Invoices",
-                    history_df["invoice_id"].nunique()
+                    "Distinct Invoices",
+                    filtered_history["invoice_id"].nunique()
                 )
                 c3.metric(
                     "Vendors",
-                    history_df["vendor_id"].nunique()
+                    filtered_history["vendor_id"].nunique()
                 )
 
+                st.subheader("Investigation Records")
+
                 st.dataframe(
-                    history_df,
-                    use_container_width=True
+                    filtered_history,
+                    use_container_width=True,
+                    hide_index=True
                 )
 
                 st.download_button(
-                    "Download Investigation History",
-                    data=history_df.to_csv(index=False).encode("utf-8"),
+                    "Download Investigation History (CSV)",
+                    data=filtered_history.to_csv(
+                        index=False
+                    ).encode("utf-8-sig"),
                     file_name="investigation_history.csv",
                     mime="text/csv"
                 )
+
             else:
                 st.info(
                     "No records found. Run invoice analysis and save "
                     "the suspicious findings first."
                 )
+
         except Exception as exc:
             st.error(f"Could not load history: {exc}")
+
 
 
 # =====================================================
