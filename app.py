@@ -501,6 +501,78 @@ def create_investigation_pdf(df):
     return buffer.getvalue()
 
 
+def detect_bank_account_mismatch(invoices_df):
+    """Flag invoices whose bank account differs from the verified vendor account."""
+
+    if db is None:
+        st.error("Database connection unavailable.")
+        return pd.DataFrame()
+
+    try:
+        response = (
+            db.table("vendors")
+            .select("vendor_id, verified_bank_account")
+            .execute()
+        )
+
+        vendors_df = pd.DataFrame(response.data or [])
+
+        if vendors_df.empty:
+            st.warning("No verified vendor accounts found.")
+            return pd.DataFrame()
+
+        result = invoices_df.copy()
+
+        # Normalize values to avoid mismatches caused by spaces or letter case.
+        result["vendor_id"] = result["vendor_id"].astype(str).str.strip()
+        result["bank_account"] = (
+            result["bank_account"].fillna("").astype(str).str.strip().str.upper()
+        )
+        vendors_df["vendor_id"] = (
+            vendors_df["vendor_id"].astype(str).str.strip()
+        )
+        vendors_df["verified_bank_account"] = (
+            vendors_df["verified_bank_account"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.upper()
+        )
+
+        result = result.merge(
+            vendors_df,
+            on="vendor_id",
+            how="left",
+            indicator=True
+        )
+
+        result["bank_mismatch"] = (
+            result["_merge"].eq("both")
+            & result["verified_bank_account"].ne("")
+            & result["bank_account"].ne(result["verified_bank_account"])
+        )
+
+        result["bank_account_check"] = np.select(
+            [
+                result["_merge"].eq("left_only"),
+                result["verified_bank_account"].eq(""),
+                result["bank_mismatch"]
+            ],
+            [
+                "Vendor Not Found",
+                "Verified Account Missing",
+                "BANK ACCOUNT MISMATCH"
+            ],
+            default="Account Matches"
+        )
+
+        return result.drop(columns=["_merge"])
+
+    except Exception as e:
+        st.error("Unable to check vendor bank accounts.")
+        st.exception(e)
+        return pd.DataFrame()
+
 
 # =====================================================
 # 6. APP NAVIGATION
