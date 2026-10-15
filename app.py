@@ -1408,6 +1408,36 @@ elif page == "Vendor Risk Intelligence":
                 int(summary["repeated_invoice_records"].sum())
             )
 
+            # Highlight vendors with recorded bank-account mismatches.
+            mismatch_vendors = summary[
+                summary["bank_mismatch_records"] > 0
+            ]
+
+            if not mismatch_vendors.empty:
+                st.warning(
+                    f"{len(mismatch_vendors)} vendor(s) have "
+                    "recorded bank-account mismatch investigations."
+                )
+
+                st.dataframe(
+                    mismatch_vendors[
+                        [
+                            "vendor_id",
+                            "vendor_name",
+                            "bank_mismatch_records",
+                            "vendor_risk_score",
+                            "vendor_risk_rating"
+                        ]
+                    ],
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info(
+                    "No saved bank-account mismatch investigations "
+                    "were found in the current history."
+                )
+
             st.subheader("Vendor Risk Summary")
 
             st.dataframe(
