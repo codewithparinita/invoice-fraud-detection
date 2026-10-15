@@ -525,6 +525,7 @@ with st.sidebar:
             "Vendor Master",
             "Investigation History",
             "Historical Vendor Risk",
+            "Investigation Reports",
             "Methodology"
         ]
     )
@@ -991,6 +992,73 @@ elif page == "Historical Vendor Risk":
         except Exception as exc:
             st.error(f"Could not load historical risk: {exc}")
 
+
+elif page == "Investigation Reports":
+    st.title("📄 Investigation Reports")
+    st.write(
+        "View saved investigation records and download reports."
+    )
+
+    try:
+        report_df = load_investigation_report_data()
+
+        if report_df.empty:
+            st.info(
+                "No saved investigations found. First analyze invoices "
+                "and save suspicious invoices to the database."
+            )
+        else:
+            col1, col2, col3 = st.columns(3)
+
+            col1.metric("Total Records", len(report_df))
+            col2.metric(
+                "High Risk",
+                int((report_df["risk_level"] == "High").sum())
+            )
+            col3.metric(
+                "Medium Risk",
+                int((report_df["risk_level"] == "Medium").sum())
+            )
+
+            st.subheader("Investigation Records")
+
+            display_columns = [
+                "invoice_id",
+                "vendor_id",
+                "vendor_name",
+                "detected_issue",
+                "risk_score",
+                "risk_level",
+                "investigated_at"
+            ]
+
+            st.dataframe(
+                report_df[display_columns],
+                use_container_width=True,
+                hide_index=True
+            )
+
+            st.download_button(
+                "⬇️ Download CSV Report",
+                data=report_df.to_csv(index=False).encode("utf-8-sig"),
+                file_name="invoice_investigation_report.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+
+            pdf_data = create_investigation_pdf(report_df)
+
+            st.download_button(
+                "⬇️ Download PDF Report",
+                data=pdf_data,
+                file_name="invoice_investigation_report.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+
+    except Exception as e:
+        st.error("Could not generate the investigation report.")
+        st.exception(e)
 
 # =====================================================
 # 13. METHODOLOGY
