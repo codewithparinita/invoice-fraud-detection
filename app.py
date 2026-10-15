@@ -526,6 +526,7 @@ with st.sidebar:
             "Investigation History",
             "Historical Vendor Risk",
             "Investigation Reports",
+            "Fraud Alerts",
             "Methodology"
         ]
     )
@@ -1058,6 +1059,97 @@ elif page == "Investigation Reports":
 
     except Exception as e:
         st.error("Could not generate the investigation report.")
+        st.exception(e)
+
+elif page == "Fraud Alerts":
+    st.title("🚨 High-Risk Invoice Alerts")
+
+    st.write(
+        "Review saved investigations that have high recorded "
+        "risk scores and require priority attention."
+    )
+
+    try:
+        alerts_df = load_investigation_report_data()
+
+        if alerts_df.empty:
+            st.info(
+                "No saved investigation records are available yet. "
+                "Analyze invoices and save suspicious records first."
+            )
+
+        else:
+            # High risk means a recorded score of 50 or more.
+            high_alerts = alerts_df[
+                alerts_df["risk_score"] >= 50
+            ].copy()
+
+            total_records = len(alerts_df)
+            total_alerts = len(high_alerts)
+
+            col1, col2, col3 = st.columns(3)
+
+            col1.metric("Saved Investigations", total_records)
+            col2.metric("High-Risk Alerts", total_alerts)
+            col3.metric(
+                "Vendors Requiring Review",
+                high_alerts["vendor_id"].nunique()
+            )
+
+            if high_alerts.empty:
+                st.success(
+                    "No high-risk records were found among the "
+                    "saved investigations."
+                )
+
+            else:
+                st.error(
+                    f"{total_alerts} high-risk investigation record(s) "
+                    "require priority review."
+                )
+
+                st.subheader("High-Risk Cases")
+
+                alert_columns = [
+                    "invoice_id",
+                    "vendor_id",
+                    "vendor_name",
+                    "detected_issue",
+                    "risk_score",
+                    "risk_level",
+                    "investigated_at"
+                ]
+
+                st.dataframe(
+                    high_alerts[alert_columns],
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+                st.download_button(
+                    label="Download High-Risk Alerts (CSV)",
+                    data=high_alerts.to_csv(
+                        index=False
+                    ).encode("utf-8-sig"),
+                    file_name="high_risk_invoice_alerts.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+
+                st.warning(
+                    "Auditor action: verify the invoice, vendor details, "
+                    "supporting documents and payment account before "
+                    "approving or rejecting a transaction."
+                )
+
+            st.caption(
+                "Alert threshold: risk score >= 50. "
+                "Alerts are based on saved investigation records, "
+                "not confirmed fraud."
+            )
+
+    except Exception as e:
+        st.error("Unable to load high-risk alerts.")
         st.exception(e)
 
 # =====================================================
