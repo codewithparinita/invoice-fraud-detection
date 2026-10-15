@@ -694,24 +694,25 @@ elif page == "Analyze Invoices":
         st.dataframe(source.head(10), use_container_width=True)
         st.caption("Required columns: " + ", ".join(REQUIRED))
 
+        
         if st.button("Run AI Fraud Analysis", type="primary"):
             try:
-                
-analysis_results = analyze_invoices(source, db)
+                analysis_results = analyze_invoices(source, db)
 
-bank_checked_results = detect_bank_account_mismatch(
-    analysis_results
-)
+                bank_checked_results = detect_bank_account_mismatch(
+                    analysis_results
+                )
 
-if not bank_checked_results.empty:
-    analysis_results = bank_checked_results
+                if not bank_checked_results.empty:
+                    analysis_results = bank_checked_results
 
-st.session_state.results = analysis_results
-st.success("Analysis completed.")
+                st.session_state.results = analysis_results
+                st.success("Analysis completed.")
 
             except Exception as exc:
                 st.session_state.results = None
                 st.error(f"Analysis failed: {exc}")
+
 
     results = st.session_state.results
 
