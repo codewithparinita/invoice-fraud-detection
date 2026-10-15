@@ -696,8 +696,19 @@ elif page == "Analyze Invoices":
 
         if st.button("Run AI Fraud Analysis", type="primary"):
             try:
-                st.session_state.results = analyze_invoices(source, db)
-                st.success("Analysis completed.")
+                
+analysis_results = analyze_invoices(source, db)
+
+bank_checked_results = detect_bank_account_mismatch(
+    analysis_results
+)
+
+if not bank_checked_results.empty:
+    analysis_results = bank_checked_results
+
+st.session_state.results = analysis_results
+st.success("Analysis completed.")
+
             except Exception as exc:
                 st.session_state.results = None
                 st.error(f"Analysis failed: {exc}")
