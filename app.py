@@ -501,8 +501,9 @@ def create_investigation_pdf(df):
     return buffer.getvalue()
 
 
+
 def detect_bank_account_mismatch(invoices_df):
-    """Flag invoices whose bank account differs from the verified vendor account."""
+    """Check invoice bank accounts against verified vendor accounts."""
 
     if db is None:
         st.error("Database connection unavailable.")
@@ -523,13 +524,19 @@ def detect_bank_account_mismatch(invoices_df):
 
         result = invoices_df.copy()
 
-        # Normalize values to avoid mismatches caused by spaces or letter case.
-        result["vendor_id"] = result["vendor_id"].astype(str).str.strip()
-        result["bank_account"] = (
-            result["bank_account"].fillna("").astype(str).str.strip().str.upper()
+        result["vendor_id"] = (
+            result["vendor_id"].fillna("").astype(str).str.strip()
         )
+        result["bank_account"] = (
+            result["bank_account"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.upper()
+        )
+
         vendors_df["vendor_id"] = (
-            vendors_df["vendor_id"].astype(str).str.strip()
+            vendors_df["vendor_id"].fillna("").astype(str).str.strip()
         )
         vendors_df["verified_bank_account"] = (
             vendors_df["verified_bank_account"]
@@ -537,6 +544,13 @@ def detect_bank_account_mismatch(invoices_df):
             .astype(str)
             .str.strip()
             .str.upper()
+        )
+
+        # Give the vendor-master account its own unique column name.
+        vendors_df = vendors_df.rename(
+            columns={
+                "verified_bank_account": "master_verified_bank_account"
+            }
         )
 
         result = result.merge(
@@ -548,14 +562,16 @@ def detect_bank_account_mismatch(invoices_df):
 
         result["bank_mismatch"] = (
             result["_merge"].eq("both")
-            & result["verified_bank_account"].ne("")
-            & result["bank_account"].ne(result["verified_bank_account"])
+            & result["master_verified_bank_account"].ne("")
+            & result["bank_account"].ne(
+                result["master_verified_bank_account"]
+            )
         )
 
         result["bank_account_check"] = np.select(
             [
                 result["_merge"].eq("left_only"),
-                result["verified_bank_account"].eq(""),
+                result["master_verified_bank_account"].eq(""),
                 result["bank_mismatch"]
             ],
             [
@@ -572,6 +588,7 @@ def detect_bank_account_mismatch(invoices_df):
         st.error("Unable to check vendor bank accounts.")
         st.exception(e)
         return pd.DataFrame()
+
 
 
 # =====================================================
