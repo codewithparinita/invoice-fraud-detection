@@ -582,7 +582,16 @@ def detect_bank_account_mismatch(invoices_df):
             default="Account Matches"
         )
 
+       
+        # Escalate bank-account mismatches to High Risk.
+        if "risk_score" in result.columns:
+            result.loc[result["bank_mismatch"], "risk_score"] = 100
+
+        if "risk_level" in result.columns:
+            result.loc[result["bank_mismatch"], "risk_level"] = "High"
+
         return result.drop(columns=["_merge"])
+
 
     except Exception as e:
         st.error("Unable to check vendor bank accounts.")
