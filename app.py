@@ -8,6 +8,21 @@ from sklearn.ensemble import IsolationForest
 from supabase import create_client
 from datetime import datetime, timezone
 
+import io
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle
+)
+
+
 st.set_page_config(
     page_title="Invoice Fraud & Vendor Risk AI",
     page_icon="🔎",
@@ -310,6 +325,181 @@ def save_investigations(client, results):
     ).execute()
 
     return len(rows)
+
+
+# =====================================================
+# INVESTIGATION REPORT FUNCTIONS
+# =====================================================
+
+def load_investigation_report_data():
+    """Load saved investigation records from Supabase."""
+    if db is None:
+        return pd.DataFrame()
+
+    response = (
+        db.table("investigation_history")
+        .select("*")
+        .order("investigated_at", desc=True)
+        .execute()
+    )
+
+    records = response.data or []
+    df = pd.DataFrame(records)
+
+    if df.empty:
+        return df
+
+    # Retrieve vendor names from the vendor master.
+    vendor_response = (
+        db.table("vendors")
+        .select("vendor_id, vendor_name")
+        .execute()
+    )
+
+    vendor_names = {
+        row["vendor_id"]: row["vendor_name"]
+        for row in (vendor_response.data or [])
+    }
+
+    df["vendor_name"] = (
+        df["vendor_id"].map(vendor_names).fillna("Not available")
+    )
+
+    df["risk_score"] = pd.to_numeric(
+        df["risk_score"], errors="coerce"
+    )
+
+    def get_risk_level(score):
+        if pd.isna(score):
+            return "Unscored"
+        if score >= 50:
+            return "High"
+        if score >= 25:
+            return "Medium"
+        return "Low"
+
+    df["risk_level"] = df["risk_score"].apply(get_risk_level)
+
+    return df
+
+
+def create_investigation_pdf(df):
+    """Create a downloadable PDF investigation report."""
+    buffer = io.BytesIO()
+
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=10 * mm,
+        leftMargin=10 * mm,
+        topMargin=10 * mm,
+        bottomMargin=10 * mm
+    )
+
+    styles = getSampleStyleSheet()
+    elements = []
+
+    elements.append(
+        Paragraph(
+            "AI-Based Invoice Fraud &amp; Vendor Risk Detection",
+            styles["Title"]
+        )
+    )
+    elements.append(
+        Paragraph("Investigation Report", styles["Heading2"])
+    )
+    elements.append(
+        Paragraph(
+            "Generated: " + datetime.now().strftime("%d-%m-%Y %H:%M"),
+            styles["Normal"]
+        )
+    )
+    elements.append(Spacer(1, 10))
+
+    total = len(df)
+    high = int((df["risk_level"] == "High").sum())
+    medium = int((df["risk_level"] == "Medium").sum())
+    low = int((df["risk_level"] == "Low").sum())
+
+    elements.append(
+        Paragraph(
+            f"Total records: {total} | High risk: {high} | "
+            f"Medium risk: {medium} | Low risk: {low}",
+            styles["Normal"]
+        )
+    )
+    elements.append(Spacer(1, 12))
+
+    columns = [
+        ("invoice_id", "Invoice ID"),
+        ("vendor_id", "Vendor ID"),
+        ("vendor_name", "Vendor Name"),
+        ("detected_issue", "Detected Issue"),
+        ("risk_score", "Risk Score"),
+        ("risk_level", "Risk Level"),
+        ("investigated_at", "Investigation Date")
+    ]
+
+    table_data = [[heading for _, heading in columns]]
+
+    for _, row in df.iterrows():
+        table_row = []
+
+        for key, _ in columns:
+            value = row.get(key, "")
+
+            if pd.isna(value):
+                value = ""
+            elif key == "risk_score":
+                value = f"{float(value):.2f}"
+            else:
+                value = str(value)
+
+            value = (
+                value.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+            )
+
+            table_row.append(
+                Paragraph(value, styles["BodyText"])
+            )
+
+        table_data.append(table_row)
+
+    table = Table(
+        table_data,
+        colWidths=[
+            25 * mm, 22 * mm, 32 * mm, 62 * mm,
+            20 * mm, 22 * mm, 35 * mm
+        ],
+        repeatRows=1
+    )
+
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#243B53")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+         [colors.white, colors.HexColor("#F1F5F9")]),
+    ]))
+
+    elements.append(table)
+    elements.append(Spacer(1, 10))
+    elements.append(
+        Paragraph(
+            "A risk flag indicates a need for investigation; it does "
+            "not prove that fraud occurred.",
+            styles["Italic"]
+        )
+    )
+
+    document.build(elements)
+    buffer.seek(0)
+    return buffer.getvalue()
+
 
 
 # =====================================================
