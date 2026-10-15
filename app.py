@@ -527,6 +527,7 @@ with st.sidebar:
             "Historical Vendor Risk",
             "Investigation Reports",
             "Fraud Alerts",
+            "Vendor Risk Intelligence",
             "Methodology"
         ]
     )
@@ -1150,6 +1151,144 @@ elif page == "Fraud Alerts":
 
     except Exception as e:
         st.error("Unable to load high-risk alerts.")
+        st.exception(e)
+
+elif page == "Vendor Risk Intelligence":
+    st.title("🏢 Vendor Risk Intelligence")
+
+    st.write(
+        "Analyze vendor-level risk using saved investigation history."
+    )
+
+    try:
+        vendor_df = load_investigation_report_data()
+
+        if vendor_df.empty:
+            st.info(
+                "No saved investigations found. Analyze invoices "
+                "and save suspicious records first."
+            )
+
+        else:
+            # Convert scores to numeric values.
+            vendor_df["risk_score"] = pd.to_numeric(
+                vendor_df["risk_score"],
+                errors="coerce"
+            )
+
+            vendor_df["invoice_id"] = (
+                vendor_df["invoice_id"].fillna("").astype(str)
+            )
+
+            # Identify invoice IDs that appear in multiple saved
+            # investigation records.
+            valid_ids = vendor_df["invoice_id"].ne("")
+            repeated_ids = vendor_df.loc[
+                valid_ids, "invoice_id"
+            ].duplicated(keep=False)
+
+            vendor_df["repeated_invoice_record"] = False
+            vendor_df.loc[
+                vendor_df.loc[valid_ids].index,
+                "repeated_invoice_record"
+            ] = repeated_ids.to_numpy()
+
+            # Aggregate investigation data by vendor.
+            summary = (
+                vendor_df.groupby(
+                    ["vendor_id", "vendor_name"],
+                    dropna=False
+                )
+                .agg(
+                    investigation_records=("invoice_id", "size"),
+                    distinct_invoices=("invoice_id", "nunique"),
+                    repeated_invoice_records=(
+                        "repeated_invoice_record", "sum"
+                    ),
+                    high_risk_records=(
+                        "risk_score",
+                        lambda scores: (scores >= 50).sum()
+                    ),
+                    average_recorded_score=("risk_score", "mean"),
+                    maximum_recorded_score=("risk_score", "max")
+                )
+                .reset_index()
+            )
+
+            # Assign a review category using the maximum recorded score.
+            def vendor_rating(score):
+                if pd.isna(score):
+                    return "Unscored"
+                if score >= 50:
+                    return "High"
+                if score >= 25:
+                    return "Medium"
+                return "Low"
+
+            summary["vendor_risk_rating"] = (
+                summary["maximum_recorded_score"].apply(vendor_rating)
+            )
+
+            summary = summary.sort_values(
+                "maximum_recorded_score",
+                ascending=False,
+                na_position="last"
+            )
+
+            # Dashboard metrics.
+            c1, c2, c3 = st.columns(3)
+
+            c1.metric("Vendors Investigated", len(summary))
+            c2.metric(
+                "High-Risk Vendors",
+                int((summary["vendor_risk_rating"] == "High").sum())
+            )
+            c3.metric(
+                "Repeated Invoice Records",
+                int(summary["repeated_invoice_records"].sum())
+            )
+
+            st.subheader("Vendor Risk Summary")
+
+            st.dataframe(
+                summary,
+                use_container_width=True,
+                hide_index=True
+            )
+
+            st.subheader("Vendor Risk Rating Distribution")
+
+            rating_counts = (
+                summary["vendor_risk_rating"]
+                .value_counts()
+                .rename_axis("Risk Rating")
+                .reset_index(name="Number of Vendors")
+            )
+
+            st.bar_chart(
+                rating_counts.set_index("Risk Rating")
+            )
+
+            st.download_button(
+                label="Download Vendor Risk Report (CSV)",
+                data=summary.to_csv(
+                    index=False
+                ).encode("utf-8-sig"),
+                file_name="vendor_risk_intelligence_report.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+
+            st.caption(
+                "Risk ratings use the maximum recorded investigation "
+                "score: High >= 50, Medium >= 25, Low < 25. "
+                "Repeated records can also result from saving the same "
+                "investigation more than once. These ratings are "
+                "screening indicators, not proof of fraud."
+            )
+
+    except Exception as e:
+        st.error("Unable to generate vendor risk intelligence.")
         st.exception(e)
 
 # =====================================================
